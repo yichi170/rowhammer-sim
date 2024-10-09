@@ -16,15 +16,27 @@
    % cloud-localds cloud-init.img user-data meta-data
    ```
 
-3. Start the VM using `qemu`:
+3. Start the VM using `qemu` with file sharing (Virtio-9P):
    
    ```bash
-   qemu-system-aarch64 \
-   -m 2048 -cpu cortex-a72 -M virt -nographic \
+   % qemu-system-aarch64 \
+   -m 5G -cpu cortex-a72 -M virt -nographic \
    -kernel ubuntu-22.04-server-cloudimg-arm64-vmlinuz-generic \
    -initrd ubuntu-22.04-server-cloudimg-arm64-initrd-generic \
    -append "root=/dev/vda1 console=ttyAMA0" \
    -drive file=ubuntu-22.04-server-cloudimg-arm64.img,if=virtio \
    -net nic -net user,hostfwd=tcp::2222-:22 \
-   -drive file=cloud-init.img,format=raw
+   -drive file=cloud-init.img,format=raw \
+   -virtfs local,path=<path>/rowhammer-sim,mount_tag=mtg_ro
+   whammer,security_model=none,id=mtg_rowhammer
+   ```
+   
+   On VM:
+   
+   ```bash
+   # use the same tag to mount the same folder
+   $ sudo mount -t 9p mtg_rowhammer rowhammer/
+   # use bindfs to re-mount with the desired uid and gid
+   # ref: https://github.com/utmapp/UTM/discussions/4458
+   $ sudo bindfs --map=501/1000:@dialout/@1000 rowhammer/ rowhammer-sim/
    ```
