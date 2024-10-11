@@ -1,6 +1,6 @@
 # Progress Log
 
-## Stage 1: Modify kernel module for Rowhammer simulation
+## Stage 1: Modify Kernel Module for Rowhammer Simulation
 
 ### Environment Setup
 
@@ -40,3 +40,12 @@
    # ref: https://github.com/utmapp/UTM/discussions/4458
    $ sudo bindfs --map=501/1000:@dialout/@1000 rowhammer/ rowhammer-sim/
    ```
+
+### Kernel Module Implementation
+
+1. Implemented a simple module that registers a character device during module initialization.
+2. Todo: Implement the bit-flip operation, which will accept a virtual address and perform a bit-flip at the specified address (page table).
+
+## Stage 2: Implement Attacker Program
+
+1. Implement a dummy attacker program.
