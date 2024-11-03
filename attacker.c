@@ -6,8 +6,6 @@
 #include <unistd.h>
 
 #define SIZE_MB 0x100000 // 1024 * 1024
-#define SIZE_GB 0x40000000
-#define SIZE_4GB 0x100000000
 
 int main()
 {
@@ -37,8 +35,11 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
-	if (write(fd, block, sizeof(uint64_t)) != sizeof(uint64_t)) {
+	int pte_index = write(fd, block, sizeof(uint64_t));
+	if (pte_index == -1) {
 		perror("write address to /dev/bitflip");
+	} else {
+		printf("pte_index: %d\n", pte_index);
 	}
 
 	printf("vaddr2's val: %d\n", *(int *)vaddr2);

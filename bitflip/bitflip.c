@@ -99,26 +99,44 @@ static pte_t *vaddr_to_pte(uint64_t address)
 	return pte_offset_map(pmdp, address);
 }
 
+static pte_t *vaddr_to_pte_base(uint64_t address)
+{
+	pmd_t *pmdp = pmd_off(current->mm, address);
+	pr_info("bitflip: [to_pte_base] pmdp: %#llx\n", (uint64_t)pmdp->pmd);
+	return (pte_t *)pmd_page_vaddr(*pmdp);
+}
+
 static ssize_t bitflip_write(struct file *filp, const char __user *buff,
 			     size_t len, loff_t *off)
 {
 	uint64_t user_va1 = (uint64_t)buff;
 	uint64_t user_va2 = user_va1 + SIZE_2M;
 
-	struct vm_area_struct *vma;
-
-	vma = find_vma(current->mm, user_va1);
-	pte_t *pte1 = vaddr_to_pte(user_va1);
-	pte_t *pte2 = vaddr_to_pte(user_va2);
+	struct vm_area_struct *vma = find_vma(current->mm, user_va1);
+	pte_t *pte1 = vaddr_to_pte(user_va1); // in the first page table
+	pte_t *pte2 = vaddr_to_pte(user_va2); // in the second page table
+	pte_t *pte2_4KB = vaddr_to_pte(user_va2 + 0x1000);
+	pte_t *pte2_base = vaddr_to_pte_base(user_va2);
 
 	if (pte_present(*pte1)) {
-		pr_info("bitflip: pte1 value: %#llx\n", pte_val(*pte1));
-		pr_info("bitflip: pte2 value: %#llx\n", pte_val(*pte2));
-
-		set_pte(pte1, pfn_pte(pte_pfn(*pte2), PAGE_SHARED));
+		pte_t *ptr_ptbase = (pte_t *)&pte2_base;
 
 		pr_info("bitflip: pte1 value: %#llx\n", pte_val(*pte1));
 		pr_info("bitflip: pte2 value: %#llx\n", pte_val(*pte2));
+		pr_info("bitflip: pte2base addr: %#llx\n", (uint64_t)pte2_base);
+		pr_info("bitflip: pte2     addr: %#llx\n", (uint64_t)pte2);
+		pr_info("bitflip: pte2+4KB addr: %#llx\n", (uint64_t)pte2_4KB);
+
+		pr_info("bitflip: PTRS_PER_PTE: %d\n", PTRS_PER_PTE);
+		pr_info("bitflip: pte1     pte_index: %ld\n",
+			pte_index(user_va1));
+		pr_info("bitflip: pte2     pte_index: %ld\n",
+			pte_index(user_va2));
+		pr_info("bitflip: pte2_4KB pte_index: %ld\n",
+			pte_index(user_va2 + 0x1000));
+
+		// redirect pte1 to the base of the second page table
+		set_pte(pte1, pfn_pte(pte_pfn(*ptr_ptbase), PAGE_SHARED));
 
 		flush_cache_page(vma, user_va1, pte_pfn(*pte1));
 		flush_tlb_page(vma, user_va1);
@@ -126,10 +144,16 @@ static ssize_t bitflip_write(struct file *filp, const char __user *buff,
 
 		pte_unmap(pte1);
 		pte_unmap(pte2);
+		pte_unmap(pte2_4KB);
 	}
 
+	pr_info("bitflip: pte1 value: %#llx\n", pte_val(*pte1));
+	pr_info("bitflip: pte2 value: %#llx\n", pte_val(*pte2));
+	pr_info("bitflip: pte2base addr: %#llx\n", (uint64_t)pte2_base);
+	pr_info("bitflip: pte2     addr: %#llx\n", (uint64_t)pte2);
+
 	pr_info("bitflip: Finished writing to bitflip module\n");
-	return -EINVAL;
+	return pte_index(user_va2);
 }
 
 module_init(bitflip_init);
