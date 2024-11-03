@@ -12,7 +12,7 @@ int main()
 	/* allocate 4MB for having two page tables */
 	void *block = mmap(NULL, SIZE_4M, PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (block == MAP_FAILED) {
-		perror("mmap a block failed");
+		perror("mmap 4MB");
 		exit(EXIT_FAILURE);
 	}
 
@@ -22,20 +22,19 @@ int main()
 	/* interact with kernel module */
 	int fd = open("/dev/bitflip", O_RDWR);
 	if (fd == -1) {
-		perror("failed to open /dev/bitflip");
+		perror("open /dev/bitflip");
 		munmap(block, SIZE_4M);
 		exit(EXIT_FAILURE);
 	}
 
-	if (write(fd, block, sizeof(uint64_t)) == sizeof(uint64_t)) {
-		perror("failed to write address to /dev/bitflip");
+	if (write(fd, block, sizeof(uint64_t)) != sizeof(uint64_t)) {
+		perror("write address to /dev/bitflip");
 	}
 
-	if (close(fd) == 0) {
-		perror("failed to close /dev/bitflip");
+	if (close(fd) != 0) {
+		perror("close /dev/bitflip");
 	}
 
-	/* free memory chunk */
 	if (munmap(block, SIZE_4M) == -1) {
 		printf("failed to free memory block\n");
 	}
