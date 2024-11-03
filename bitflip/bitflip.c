@@ -4,12 +4,21 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/version.h>
+#include <linux/mm.h>
+#include <linux/page_ref.h>
+#include <linux/pgtable.h>
+#include <asm/current.h>
+#include <asm/pgtable.h>
+#include <asm/cacheflush.h>
 
 #define DEVICE_NAME "bitflip"
 #define N_MINORS 1
+#define SIZE_2M 0x200000
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Yi-Chi Lee");
+MODULE_DESCRIPTION(
+	"A module provides a character driver that can flip a bit in page table, creating the vulnerability for attacker to exploit");
 
 static struct cdev bf_dev;
 static dev_t dev_num;
@@ -18,7 +27,8 @@ static struct class *cls;
 static int bitflip_open(struct inode *, struct file *);
 static int bitflip_release(struct inode *, struct file *);
 static ssize_t bitflip_read(struct file *, char __user *, size_t, loff_t *);
-static ssize_t bitflip_write(struct file *, const char __user *, size_t, loff_t *);
+static ssize_t bitflip_write(struct file *, const char __user *, size_t,
+			     loff_t *);
 
 static struct file_operations bf_fops = {
 	.read = bitflip_read,
@@ -34,7 +44,8 @@ static int __init bitflip_init(void)
 
 	alloc_ret = alloc_chrdev_region(&dev_num, 0, N_MINORS, DEVICE_NAME);
 	if (alloc_ret) {
-		pr_alert("bitflip: Failed to register device with error = %d\n", alloc_ret);
+		pr_alert("bitflip: Failed to register device with error = %d\n",
+			 alloc_ret);
 		return alloc_ret;
 	}
 
@@ -62,7 +73,6 @@ static void __exit bitflip_exit(void)
 	pr_info("bitflip: Module cleanup completed\n");
 }
 
-
 static int bitflip_open(struct inode *inode, struct file *file)
 {
 	pr_info("bitflip: Device opened\n");
@@ -75,17 +85,50 @@ static int bitflip_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t bitflip_read(struct file *filp, char __user *buff,
-			    size_t len, loff_t *off)
+static ssize_t bitflip_read(struct file *filp, char __user *buff, size_t len,
+			    loff_t *off)
 {
 	pr_info("bitflip: Read operation is not implemented\n");
 	return -EINVAL;
 }
 
+static pte_t *vaddr_to_pte(uint64_t address)
+{
+	pmd_t *pmdp = pmd_off(current->mm, address);
+	pr_info("bitflip: [vaddr_to_pte] pmdp: %#llx\n", (uint64_t)pmdp->pmd);
+	return pte_offset_map(pmdp, address);
+}
+
 static ssize_t bitflip_write(struct file *filp, const char __user *buff,
 			     size_t len, loff_t *off)
 {
-	pr_info("bitflip: Write operation is not implemented\n");
+	uint64_t user_va1 = (uint64_t)buff;
+	uint64_t user_va2 = user_va1 + SIZE_2M;
+
+	struct vm_area_struct *vma;
+
+	vma = find_vma(current->mm, user_va1);
+	pte_t *pte1 = vaddr_to_pte(user_va1);
+	pte_t *pte2 = vaddr_to_pte(user_va2);
+
+	if (pte_present(*pte1)) {
+		pr_info("bitflip: pte1 value: %#llx\n", pte_val(*pte1));
+		pr_info("bitflip: pte2 value: %#llx\n", pte_val(*pte2));
+
+		set_pte(pte1, pfn_pte(pte_pfn(*pte2), PAGE_SHARED));
+
+		pr_info("bitflip: pte1 value: %#llx\n", pte_val(*pte1));
+		pr_info("bitflip: pte2 value: %#llx\n", pte_val(*pte2));
+
+		flush_cache_page(vma, user_va1, pte_pfn(*pte1));
+		flush_tlb_page(vma, user_va1);
+		update_mmu_cache(vma, user_va1, pte1);
+
+		pte_unmap(pte1);
+		pte_unmap(pte2);
+	}
+
+	pr_info("bitflip: Finished writing to bitflip module\n");
 	return -EINVAL;
 }
 
