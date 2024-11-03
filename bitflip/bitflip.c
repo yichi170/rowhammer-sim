@@ -113,44 +113,53 @@ static ssize_t bitflip_write(struct file *filp, const char __user *buff,
 	uint64_t user_va2 = user_va1 + SIZE_2M;
 
 	struct vm_area_struct *vma = find_vma(current->mm, user_va1);
-	pte_t *pte1 = vaddr_to_pte(user_va1); // in the first page table
-	pte_t *pte2 = vaddr_to_pte(user_va2); // in the second page table
-	pte_t *pte2_4KB = vaddr_to_pte(user_va2 + 0x1000);
+	pte_t *ptep1 = vaddr_to_pte(user_va1); // in the first page table
+	pte_t *ptep2 = vaddr_to_pte(user_va2); // in the second page table
 	pte_t *pte2_base = vaddr_to_pte_base(user_va2);
+	unsigned long pfn_pte2 =
+		page_to_pfn(pmd_page(*pmd_off(current->mm, user_va2)));
 
-	if (pte_present(*pte1)) {
-		pte_t *ptr_ptbase = (pte_t *)&pte2_base;
+	if (pte_present(*ptep1)) {
+		struct page *page_pte2;
+		unsigned long pfn;
+		pgprot_t old_prot;
 
-		pr_info("bitflip: pte1 value: %#llx\n", pte_val(*pte1));
-		pr_info("bitflip: pte2 value: %#llx\n", pte_val(*pte2));
+		pr_info("bitflip: Old ptep1 present: %d writable: %d user exec: %d dirty: %d young: %d\n",
+			pte_present(*ptep1), pte_write(*ptep1),
+			pte_user_exec(*ptep1), pte_dirty(*ptep1),
+			pte_young(*ptep1));
+		pr_info("bitflip: ptep1 value: %#llx\n", pte_val(*ptep1));
+		pr_info("bitflip: ptep2 value: %#llx\n", pte_val(*ptep2));
 		pr_info("bitflip: pte2base addr: %#llx\n", (uint64_t)pte2_base);
-		pr_info("bitflip: pte2     addr: %#llx\n", (uint64_t)pte2);
-		pr_info("bitflip: pte2+4KB addr: %#llx\n", (uint64_t)pte2_4KB);
+		pr_info("bitflip: ptep2    addr: %#llx\n", (uint64_t)ptep2);
 
 		pr_info("bitflip: PTRS_PER_PTE: %d\n", PTRS_PER_PTE);
-		pr_info("bitflip: pte1     pte_index: %ld\n",
+		pr_info("bitflip: ptep1    pte_index: %ld\n",
 			pte_index(user_va1));
-		pr_info("bitflip: pte2     pte_index: %ld\n",
+		pr_info("bitflip: ptep2    pte_index: %ld\n",
 			pte_index(user_va2));
-		pr_info("bitflip: pte2_4KB pte_index: %ld\n",
-			pte_index(user_va2 + 0x1000));
 
-		// redirect pte1 to the base of the second page table
-		set_pte(pte1, pfn_pte(pte_pfn(*ptr_ptbase), PAGE_SHARED));
+		// redirect ptep1 to the base of the second page table
+		page_pte2 = pfn_to_page(pfn_pte2);
+		pfn = pte_pfn(*ptep1);
+		old_prot = __pgprot(pte_val(pfn_pte(pfn, __pgprot(0))) ^
+				    pte_val(*ptep1));
+		set_pte(ptep1, pfn_pte(pfn_pte2, old_prot));
 
-		flush_cache_page(vma, user_va1, pte_pfn(*pte1));
+		// ensure cache and TLB are in sync
+		flush_cache_page(vma, user_va1, pte_pfn(*ptep1));
 		flush_tlb_page(vma, user_va1);
-		update_mmu_cache(vma, user_va1, pte1);
+		update_mmu_cache(vma, user_va1, ptep1);
 
-		pte_unmap(pte1);
-		pte_unmap(pte2);
-		pte_unmap(pte2_4KB);
+		pr_info("bitflip: ptep1 new value: %#llx\n", pte_val(*ptep1));
+		pr_info("bitflip: New ptep1 present: %d writable: %d user exec: %d dirty: %d young: %d\n",
+			pte_present(*ptep1), pte_write(*ptep1),
+			pte_user_exec(*ptep1), pte_dirty(*ptep1),
+			pte_young(*ptep1));
+
+		pte_unmap(ptep1);
+		pte_unmap(ptep2);
 	}
-
-	pr_info("bitflip: pte1 value: %#llx\n", pte_val(*pte1));
-	pr_info("bitflip: pte2 value: %#llx\n", pte_val(*pte2));
-	pr_info("bitflip: pte2base addr: %#llx\n", (uint64_t)pte2_base);
-	pr_info("bitflip: pte2     addr: %#llx\n", (uint64_t)pte2);
 
 	pr_info("bitflip: Finished writing to bitflip module\n");
 	return pte_index(user_va2);
