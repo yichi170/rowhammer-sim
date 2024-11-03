@@ -44,8 +44,15 @@
 ### Kernel Module Implementation
 
 1. Implemented a simple module that registers a character device during module initialization.
-2. Todo: Implement the bit-flip operation, which will accept a virtual address and perform a bit-flip at the specified address (page table).
+2. Implemented the bit-flip operation, which will accept a virtual address and perform a bit-flip at the specified address (page table).
+   - provide a `write` function for user-level programs to interact with.
+   - use `set_pte` to modify the page table entry to point to another page table.
 
 ## Stage 2: Implement Attacker Program
 
-1. Implement a dummy attacker program.
+1. Implemented attacker program prototype.
+2. Successfully interact with the `bitflip` device without segmentation fault and being killed.
+
+Goal: ensure the attack is possible
+- [ ] try to dump something after bit-flipping
+
