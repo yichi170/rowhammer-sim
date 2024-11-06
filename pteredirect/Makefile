@@ -1,4 +1,4 @@
-obj-m += bitflip.o
+obj-m += pteredirect.o
 
 PWD := $(CURDIR)
 
