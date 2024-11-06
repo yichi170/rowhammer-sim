@@ -41,18 +41,25 @@
    $ sudo bindfs --map=501/1000:@dialout/@1000 rowhammer/ rowhammer-sim/
    ```
 
+### ~~Kernel Module Implementation~~
+
+1. ~~Implemented a simple module that registers a character device during module initialization.~~
+2. ~~Implemented the bit-flip operation, which will accept a virtual address and perform a bit-flip at the specified address (page table).~~
+   - ~~provide a `write` function for user-level programs to interact with.~~
+   - ~~use `set_pte` to modify the page table entry to point to another page table.~~
+
+## ~~Stage 2: Implement Attacker Program~~
+
+1. ~~Implemented attacker program prototype.~~
+2. ~~Successfully interact with the `bitflip` device without segmentation fault and being killed.~~
+
+~~Goal: ensure the attack is possible~~
+- [ ] ~~try to dump something after bit-flipping~~
+
 ### Kernel Module Implementation
+My original method is making a kernel module that accepts a virtual address (allocates 4MB in user space, ensuring the existence of two page tables (PTEs)) and makes a pointer in the first PTE to point to the second PTE's base address. This simulates the exploit of page table vulnerabilities caused by Rowhammer attacks.
+* rename the original implementation as `pteredirect`
 
-1. Implemented a simple module that registers a character device during module initialization.
-2. Implemented the bit-flip operation, which will accept a virtual address and perform a bit-flip at the specified address (page table).
-   - provide a `write` function for user-level programs to interact with.
-   - use `set_pte` to modify the page table entry to point to another page table.
+The new approach trying to do the real bit-flip in physical memory. This would make it easy to integrate with the original Rowhammer attack by replacing hammering rows in Rowhammer attacks.
 
-## Stage 2: Implement Attacker Program
-
-1. Implemented attacker program prototype.
-2. Successfully interact with the `bitflip` device without segmentation fault and being killed.
-
-Goal: ensure the attack is possible
-- [ ] try to dump something after bit-flipping
-
+## Stage 2: Modify [rowhammer-test](https://github.com/google/rowhammer-test) to test the kernel module
