@@ -1,3 +1,0 @@
-[submodule "rowhammer-test"]
-	path = rowhammer-test
-	url = git@github.com:yichi170/rowhammer-test.git
