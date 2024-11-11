@@ -5,6 +5,8 @@
 #include <linux/version.h>
 #include <linux/mm.h>
 #include <linux/highmem.h>
+#include <linux/uaccess.h>
+#include <linux/sched.h>
 
 #define DEVICE_NAME "bitflip"
 #define N_MINORS 1
@@ -20,10 +22,15 @@ static struct cdev bf_dev;
 static dev_t dev_num;
 static struct class *cls;
 
-static int bitflip_core_op(unsigned long);
+static int bitflip_core_op(unsigned long, pid_t);
 static long bitflip_ioctl(struct file *, unsigned int, unsigned long);
 
 static struct file_operations bf_fops = { .unlocked_ioctl = bitflip_ioctl };
+
+struct bitflip_args {
+	unsigned long vaddr;
+	pid_t pid;
+};
 
 static int __init bitflip_init(void)
 {
@@ -66,27 +73,39 @@ static void __exit bitflip_exit(void)
 static long bitflip_ioctl(struct file *, unsigned int cmd, unsigned long arg)
 {
 	switch (cmd) {
-	case IOCTL_FLIP_BIT:
-		int ret = bitflip_core_op(arg);
+	case IOCTL_FLIP_BIT: {
+		struct bitflip_args user_args;
+		int ret;
+
+		if (copy_from_user(&user_args,
+				   (struct bitflip_args __user *)arg,
+				   sizeof(struct bitflip_args))) {
+			return -EFAULT;
+		}
+		pr_info("[ioctl] vaddr: %#lx, pid: %d\n", user_args.vaddr,
+			user_args.pid);
+		ret = bitflip_core_op(user_args.vaddr, user_args.pid);
 		if (ret)
 			return ret;
 		break;
+	}
 	default:
 		return -EINVAL;
 	}
 	return 0;
 }
 
-static int bitflip_core_op(unsigned long vaddr)
+static int bitflip_core_op(unsigned long vaddr, pid_t pid)
 {
 	pmd_t *pmdp;
 	pte_t *ptep;
 	unsigned long pfn;
 	struct page *page;
+	struct task_struct *task = get_pid_task(find_get_pid(pid), PIDTYPE_PID);
 
 	pr_info("[bitflip] vaddr: %#lx\n", vaddr);
 
-	pmdp = pmd_off(current->mm, vaddr);
+	pmdp = pmd_off(task->mm, vaddr);
 	ptep = pte_offset_map(pmdp, vaddr);
 	pfn = pte_pfn(*ptep);
 	pte_unmap(ptep);
@@ -94,9 +113,9 @@ static int bitflip_core_op(unsigned long vaddr)
 	pr_info("[bitflip] pfn = %ld\n", pfn);
 	pr_info("[bitflip] page's phys addr = %#llx\n", __pfn_to_phys(pfn));
 
-	pfn += 1;
+	pfn += 4;
 
-	pr_info("[bitflip] pfn+1 = %ld\n", pfn);
+	pr_info("[bitflip] pfn+4 = %ld\n", pfn);
 	pr_info("[bitflip] next page's phys addr: %#llx\n", __pfn_to_phys(pfn));
 
 	page = pfn_to_page(pfn);
@@ -104,7 +123,7 @@ static int bitflip_core_op(unsigned long vaddr)
 	if (page) {
 		void *vaddr;
 		vaddr = kmap(page);
-		*(unsigned char *)vaddr ^= 0x01;
+		*(uint64_t *)vaddr ^= (1 << 16);
 		kunmap(page);
 	}
 

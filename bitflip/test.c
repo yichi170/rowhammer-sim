@@ -10,6 +10,11 @@
 
 #define SIZE_MB 0x100000 // 1024 * 1024
 
+struct bitflip_args {
+	unsigned long vaddr;
+	pid_t pid;
+};
+
 int main()
 {
 	int fd;
@@ -29,7 +34,14 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
-	if (ioctl(fd, IOCTL_FLIP_BIT, vaddr) == -1) {
+	struct bitflip_args arg = {
+		.vaddr = vaddr,
+		.pid = getpid(),
+	};
+
+	printf("vaddr: %#lx, pid: %d\n", vaddr, getpid());
+
+	if (ioctl(fd, IOCTL_FLIP_BIT, &arg) == -1) {
 		perror("ioctl failed");
 		close(fd);
 		exit(EXIT_FAILURE);
