@@ -1,4 +1,4 @@
-.PHONY: all test clean
+.PHONY: all test test-attack clean
 
 all: mysudo test-exe
 
@@ -12,8 +12,14 @@ test-exe: test.c
 	gcc $< -o $@
 	cp $@ ../test
 
+attack: attacker.c
+	gcc $< -o $@
+
 test: test-exe mysudo
 	mysudo ../test/test-exe
 
+test-attack: attack
+	./$<
+
 clean:
-	sudo $(RM) -r mysudo test-exe ../test /usr/local/bin/mysudo
+	sudo $(RM) -r mysudo test-exe attack ../test /usr/local/bin/mysudo
