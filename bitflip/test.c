@@ -13,6 +13,8 @@
 struct bitflip_args {
 	unsigned long vaddr;
 	pid_t pid;
+	int target_bit;
+	int pfn_shift;
 };
 
 int main()
@@ -37,7 +39,11 @@ int main()
 	struct bitflip_args arg = {
 		.vaddr = vaddr,
 		.pid = getpid(),
+		.target_bit = 5,
+		.pfn_shift = 0,
 	};
+
+	printf("value: %#lx\n", *(unsigned long *)block);
 
 	printf("vaddr: %#lx, pid: %d\n", vaddr, getpid());
 
@@ -46,6 +52,8 @@ int main()
 		close(fd);
 		exit(EXIT_FAILURE);
 	}
+
+	printf("value: %#lx\n", *(unsigned long *)block);
 
 	printf("Bit flip operation completed\n");
 	close(fd);

@@ -22,7 +22,7 @@ static struct cdev bf_dev;
 static dev_t dev_num;
 static struct class *cls;
 
-static int bitflip_core_op(unsigned long, pid_t);
+static int bitflip_core_op(unsigned long, pid_t, int, int);
 static long bitflip_ioctl(struct file *, unsigned int, unsigned long);
 
 static struct file_operations bf_fops = { .unlocked_ioctl = bitflip_ioctl };
@@ -30,6 +30,8 @@ static struct file_operations bf_fops = { .unlocked_ioctl = bitflip_ioctl };
 struct bitflip_args {
 	unsigned long vaddr;
 	pid_t pid;
+	int target_bit;
+	int pfn_shift;
 };
 
 static int __init bitflip_init(void)
@@ -84,7 +86,9 @@ static long bitflip_ioctl(struct file *, unsigned int cmd, unsigned long arg)
 		}
 		pr_info("[ioctl] vaddr: %#lx, pid: %d\n", user_args.vaddr,
 			user_args.pid);
-		ret = bitflip_core_op(user_args.vaddr, user_args.pid);
+		ret = bitflip_core_op(user_args.vaddr, user_args.pid,
+				      user_args.target_bit,
+				      user_args.pfn_shift);
 		if (ret)
 			return ret;
 		break;
@@ -95,13 +99,16 @@ static long bitflip_ioctl(struct file *, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
-static int bitflip_core_op(unsigned long vaddr, pid_t pid)
+static int bitflip_core_op(unsigned long vaddr, pid_t pid, int target_bit,
+			   int pfn_shift)
 {
 	pmd_t *pmdp;
 	pte_t *ptep;
 	unsigned long pfn;
 	struct page *page;
 	struct task_struct *task = get_pid_task(find_get_pid(pid), PIDTYPE_PID);
+
+	target_bit = (target_bit < 0) ? 16 : target_bit; // default: 16
 
 	pr_info("[bitflip] vaddr: %#lx\n", vaddr);
 
@@ -113,17 +120,18 @@ static int bitflip_core_op(unsigned long vaddr, pid_t pid)
 	pr_info("[bitflip] pfn = %ld\n", pfn);
 	pr_info("[bitflip] page's phys addr = %#llx\n", __pfn_to_phys(pfn));
 
-	pfn += 4;
+	pfn += pfn_shift;
 
-	pr_info("[bitflip] pfn+4 = %ld\n", pfn);
-	pr_info("[bitflip] next page's phys addr: %#llx\n", __pfn_to_phys(pfn));
+	pr_info("[bitflip] target pfn = %ld\n", pfn);
+	pr_info("[bitflip] target page's phys addr: %#llx\n",
+		__pfn_to_phys(pfn));
 
 	page = pfn_to_page(pfn);
 
 	if (page) {
 		void *vaddr;
 		vaddr = kmap(page);
-		*(uint64_t *)vaddr ^= (1 << 16);
+		*(uint64_t *)vaddr ^= (1 << target_bit);
 		kunmap(page);
 	}
 
