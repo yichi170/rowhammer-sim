@@ -128,11 +128,22 @@ static int bitflip_core_op(unsigned long vaddr, pid_t pid, int target_bit,
 
 	page = pfn_to_page(pfn);
 
+	// struct page *pages[1];
+	// get_user_pages(vaddr, 1, FOLL_WRITE, pages, NULL);
+	pr_info("[bitflip] page     addr: %#llx\n", (uint64_t)page);
+	// pr_info("[bitflip] pages[1] addr: %#llx\n", (uint64_t)pages[0]);
+
 	if (page) {
 		void *vaddr;
-		vaddr = kmap(page);
+		vaddr = page_address(page);
+		if (!vaddr) {
+			pr_err("[bitflip] kmap failed\n");
+			return -ENOMEM;
+		}
+
+		pr_info("[bitflip] original value: %#llx\n", *(uint64_t *)vaddr);
 		*(uint64_t *)vaddr ^= (1 << target_bit);
-		kunmap(page);
+		pr_info("[bitflip] updated  value: %#llx\n", *(uint64_t *)vaddr);
 	}
 
 	pr_info("[bitflip] Successfully flipped a bit in physical memory.\n");
