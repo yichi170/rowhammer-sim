@@ -8,6 +8,7 @@
 #include <string.h>
 #include <errno.h>
 #include <elf.h>
+#include <sys/ioctl.h>
 
 #define BITFLIP_MAGIC 0xF5
 #define IOCTL_FLIP_BIT _IOW(BITFLIP_MAGIC, 0, unsigned long)
@@ -15,6 +16,8 @@
 struct bitflip_args {
 	unsigned long vaddr;
 	pid_t pid;
+	int target_bit;
+	int pfn_shift;
 };
 
 void get_text_section_address(pid_t pid, unsigned long *text_start,
@@ -178,7 +181,7 @@ unsigned long find_target_address(pid_t pid, unsigned long text_start,
 			if ((next2_instruction & 0xFF000000) == 0x54000000) {
 				printf("Found 'bl' at %#lx, 'cmp' at %#lx, and 'b.ne' at %#lx\n",
 				       address, next_address, next2_address);
-				return address;
+				return next_address;
 			}
 		}
 
@@ -213,6 +216,52 @@ int main(int argc, char *argv[])
 		unsigned long target_addr =
 			find_target_address(pid, text_start, text_end);
 		printf("target: %#lx\n", target_addr);
+
+		// cmp w0, #0x0
+		// https://developer.arm.com/documentation/ddi0602/2024-09/Base-Instructions/CMP--immediate---Compare--immediate---an-alias-of-SUBS--immediate--?lang=en
+		// [31 sf]0 [30:23]11100010 [22 sh]0 [21 imm12]000000000000 [Rn]00000 [4:0]11111
+		// 32bit: 00000 -> w0, 11111 -> w31
+		// 64bit: 00000 -> x0, 11110 -> x30
+
+		int fd = open("/dev/bitflip", O_RDWR);
+		if (fd < 0) {
+			perror("Failed to open the device");
+			exit(EXIT_FAILURE);
+		}
+
+		struct bitflip_args arg = {
+			.vaddr = target_addr,
+			.pid = pid,
+			.target_bit = 5,
+			.pfn_shift = 0,
+		};
+
+		unsigned long instruction;
+		instruction = ptrace(PTRACE_PEEKTEXT, pid, (void *)(target_addr - sizeof(unsigned long)), NULL);
+		printf("instruction1: %#lx\n", instruction);
+		instruction = ptrace(PTRACE_PEEKTEXT, pid, (void *)target_addr, NULL);
+		printf("instruction2: %#lx\n", instruction);
+		instruction = ptrace(PTRACE_PEEKTEXT, pid, (void *)(target_addr + sizeof(unsigned long)), NULL);
+		printf("instruction3: %#lx\n", instruction);
+
+		if (ioctl(fd, IOCTL_FLIP_BIT, &arg) == -1) {
+			perror("ioctl failed");
+			close(fd);
+			exit(EXIT_FAILURE);
+		}
+
+		instruction = ptrace(PTRACE_PEEKTEXT, pid, (void *)(target_addr - sizeof(unsigned long)), NULL);
+		printf("instruction1: %#lx\n", instruction);
+		instruction = ptrace(PTRACE_PEEKTEXT, pid, (void *)target_addr, NULL);
+		printf("instruction2: %#lx\n", instruction);
+		instruction = ptrace(PTRACE_PEEKTEXT, pid, (void *)(target_addr + sizeof(unsigned long)), NULL);
+		printf("instruction3: %#lx\n", instruction);
+
+		// if (ioctl(fd, IOCTL_FLIP_BIT, &arg) == -1) {
+		// 	perror("ioctl failed");
+		// 	close(fd);
+		// 	exit(EXIT_FAILURE);
+		// }
 
 		ptrace(PTRACE_DETACH, pid, NULL, NULL); // Detach when done
 		waitpid(pid, NULL, 0);
