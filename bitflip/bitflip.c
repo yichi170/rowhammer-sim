@@ -107,44 +107,31 @@ static int bitflip_core_op(unsigned long vaddr, pid_t pid, int target_bit,
 	unsigned long pfn;
 	struct page *page;
 	struct task_struct *task = get_pid_task(find_get_pid(pid), PIDTYPE_PID);
+	int ret;
+	uint64_t val;
 
 	target_bit = (target_bit < 0) ? 16 : target_bit; // default: 16
 
 	pr_info("[bitflip] vaddr: %#lx\n", vaddr);
 
-	pmdp = pmd_off(task->mm, vaddr);
-	ptep = pte_offset_map(pmdp, vaddr);
-	pfn = pte_pfn(*ptep);
-	pte_unmap(ptep);
-
-	pr_info("[bitflip] pfn = %ld\n", pfn);
-	pr_info("[bitflip] page's phys addr = %#llx\n", __pfn_to_phys(pfn));
-
-	pfn += pfn_shift;
-
-	pr_info("[bitflip] target pfn = %ld\n", pfn);
-	pr_info("[bitflip] target page's phys addr: %#llx\n",
-		__pfn_to_phys(pfn));
-
-	page = pfn_to_page(pfn);
-
-	// struct page *pages[1];
-	// get_user_pages(vaddr, 1, FOLL_WRITE, pages, NULL);
-	pr_info("[bitflip] page     addr: %#llx\n", (uint64_t)page);
-	// pr_info("[bitflip] pages[1] addr: %#llx\n", (uint64_t)pages[0]);
-
-	if (page) {
-		void *vaddr;
-		vaddr = page_address(page);
-		if (!vaddr) {
-			pr_err("[bitflip] kmap failed\n");
-			return -ENOMEM;
-		}
-
-		pr_info("[bitflip] original value: %#llx\n", *(uint64_t *)vaddr);
-		*(uint64_t *)vaddr ^= (1 << target_bit);
-		pr_info("[bitflip] updated  value: %#llx\n", *(uint64_t *)vaddr);
+	ret = get_user(val, (uint64_t __user *)vaddr);
+	if (ret) {
+		pr_err("Failed to get user value\n");
+		return -EFAULT;
+	} else {
+		pr_info("[bitflip] Old value: %#llx\n", val);
 	}
+
+	val ^= (1 << target_bit);
+
+	pr_info("[bitflip] New value: %#llx\n", val);
+
+	ret = put_user(val, (uint64_t __user *)vaddr);
+
+	if (ret) {
+        pr_err("Failed to write data to user space\n");
+        return -EFAULT;
+    }
 
 	pr_info("[bitflip] Successfully flipped a bit in physical memory.\n");
 
